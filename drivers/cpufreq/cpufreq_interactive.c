@@ -284,6 +284,13 @@ static void cpufreq_interactive_timer_resched(unsigned long cpu)
 	unsigned long expires;
 	unsigned long flags;
 
+#ifdef CONFIG_PMU_COREMEM_RATIO
+	if (!tunables->speedchange_task || !tunables->regionchange_task)
+#else
+	if (!tunables->speedchange_task)
+#endif
+		return;
+
 	spin_lock_irqsave(&pcpu->load_lock, flags);
 	pcpu->time_in_idle =
 		get_cpu_idle_time(smp_processor_id(),
@@ -318,6 +325,13 @@ static void cpufreq_interactive_timer_start(
 	unsigned long expires = jiffies +
 		usecs_to_jiffies(tunables->timer_rate);
 	unsigned long flags;
+
+#ifdef CONFIG_PMU_COREMEM_RATIO
+	if (!tunables->speedchange_task || !tunables->regionchange_task)
+#else
+	if (!tunables->speedchange_task)
+#endif
+		return;
 
 	spin_lock_irqsave(&pcpu->load_lock, flags);
 	pcpu->cpu_timer.expires = expires;
@@ -471,16 +485,16 @@ static u64 update_load(int cpu)
 		pcpu->policy->governor_data;
 	u64 now;
 	u64 now_idle;
-	unsigned int delta_idle;
-	unsigned int delta_time;
+	u64 delta_idle;
+	u64 delta_time;
 	u64 active_time;
 #ifdef CONFIG_MODE_AUTO_CHANGE
 	unsigned int cur_load = 0;
 	struct cpufreq_loadinfo *cur_loadinfo = &per_cpu(loadinfo, cpu);
 #endif
 	now_idle = get_cpu_idle_time(cpu, &now, tunables->io_is_busy);
-	delta_idle = (unsigned int)(now_idle - pcpu->time_in_idle);
-	delta_time = (unsigned int)(now - pcpu->time_in_idle_timestamp);
+	delta_idle = (now_idle - pcpu->time_in_idle);
+	delta_time = (now - pcpu->time_in_idle_timestamp);
 
 	if (delta_time <= delta_idle)
 		active_time = 0;
@@ -1067,7 +1081,7 @@ static int cpufreq_interactive_notifier(
 	int cpu;
 	unsigned long flags;
 
-	if (val == CPUFREQ_POSTCHANGE) {
+	if (val == CPUFREQ_PRECHANGE) {
 		pcpu = &per_cpu(cpuinfo, freq->cpu);
 		if (!down_read_trylock(&pcpu->enable_sem))
 			return 0;
